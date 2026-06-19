@@ -121,35 +121,43 @@ def extract_info(text: str, orig_name: str) -> tuple[str, str]:
     """
     lines = [l.strip() for l in text.split('\n') if l.strip()]
 
-    # ── 物料编码（优先）- 支持多种格式 ──
+    # ════════════════════════════════════
+    # 物料编码/料号识别（最高优先级）
+    # 支持格式：
+    #   - 004.046.0064047  （数字.数字.数字）
+    #   - 1.234.567ABC     （数字.数字.字母数字）
+    #   - MAT-001234        （字母+连字符+数字）
+    #   - ABC12345          （字母+数字）
+    # ════════════════════════════════════
     codes = []
-    # 格式1: 数字.数字.字母数字 (如 0.014.001A, 1.234.567B)
-    pattern1 = r'\b(\d{1,3}\.\d{2,5}\.\d{1,5}[A-Za-z]?)\b'
-    # 格式2: 字母+数字、带连字符 (如 MAT-001234, ABC12345)
-    pattern2 = r'\b([A-Za-z]{1,5}[\-_]?\d{3,15})\b'
-    # 格式3: 纯数字编码（6-20位，排除日期）
-    pattern3 = r'\b(\d{8,20})\b'
 
     for line in lines:
-        codes.extend(re.findall(pattern1, line))
-        codes.extend(re.findall(pattern2, line))
-        codes.extend(re.findall(pattern3, line))
+        # 格式1: 数字.数字.数字...（最常见，如 004.046.0064047）
+        # 匹配：至少3段用点分隔的数字序列，每段1-5位数字，最后可跟字母
+        matches = re.findall(r'(?<![\d.])\d{1,3}(?:\.\d{2,5}){2,}\d*[A-Za-z]?(?![\d.])', line)
+        codes.extend(matches)
 
-    # 去重并过滤（排除看起来像日期的纯数字）
+        # 格式2: 料号/编码 关键字后面的内容
+        m = re.search(r'(?:料号|物料编码|物料编号|零件号|Part\s*No|P\/N|SKU|编码|编号)[\s:：]*([A-Za-z0-9.\-_]{3,30})', line, re.IGNORECASE)
+        if m and m.group(1):
+            codes.append(m.group(1))
+
+        # 格式3: 字母开头 + 数字（如 MAT001234, ABC-12345）
+        matches = re.findall(r'\b[A-Za-z]{2,5}[\-_]?\d{4,15}\b', line)
+        codes.extend(matches)
+
+    # 去重
     seen = set()
     unique_codes = []
     for c in codes:
         if c not in seen:
-            # 过滤掉8-14位的纯数字（可能是日期或时间戳）
-            if re.match(r'^\d{8,14}$', c):
-                continue
             seen.add(c)
             unique_codes.append(c)
 
-    # ── 公司/供应商名（次优先，用于文件夹分类） ──
+    # ── 公司/供应商名（用于文件夹分类） ──
     company_re = re.compile(
-        r'([\u4e00-\u9fa5]{2,10}'
-        r'(?:公司|集团|企业|工厂|厂|科技|实业|商贸|包装|弹簧|模具|电子|机械|制造|有限|股份|责任|合伙企业)'
+        r'([\u4e00-\u9fa5]{2,12}'
+        r'(?:公司|集团|企业|工厂|厂|科技|实业|商贸|包装|弹簧|模具|电子|机械|制造|有限|股份|责任|合伙|贸易)'
         r'[\u4e00-\u9fa5]*)'
     )
     companies = []
@@ -159,26 +167,24 @@ def extract_info(text: str, orig_name: str) -> tuple[str, str]:
     # ── 日期 ──
     dates = []
     for line in lines:
+        # YYYY年MM月DD日 / YYYY-MM-DD / YYYY/MM/DD / YYYY.MM.DD
         for m in re.finditer(r'(\d{4})[年\-/.](\d{1,2})[月\-/.](\d{1,2})', line):
             dates.append(f"{m.group(1)}{m.group(2).zfill(2)}{m.group(3).zfill(2)}")
-        # 也匹配 YYYYMMDD 格式
-        for m in re.finditer(r'\b(\d{8})\b', line):
-            d = m.group(1)
-            if d not in dates:
-                dates.append(d)
 
-    # ── 标题行（备用） ──
+    date = dates[0] if dates else datetime.now().strftime("%Y%m%d")
+    code = sanitize(unique_codes[0]) if unique_codes else ""
+    company = sanitize(companies[0]) if companies else ""
+
+    # 标题行备用
     title = ""
     for line in lines[:5]:
         if 4 <= len(line) <= 40:
             title = line
             break
 
-    code     = sanitize(unique_codes[0])  if unique_codes else ""
-    company  = sanitize(companies[0])    if companies    else ""
-    date     = dates[0]                  if dates       else datetime.now().strftime("%Y%m%d")
-
-    # 文件名：优先物料编码，其次供应商+日期，最后原标题
+    # ════════════════════════════════════
+    # 文件名：物料编码-日期（绝对优先！）
+    # ════════════════════════════════════
     if code:
         fname = f"{code}-{date}"
     elif company:
@@ -188,7 +194,7 @@ def extract_info(text: str, orig_name: str) -> tuple[str, str]:
     else:
         fname = f"{sanitize(orig_name.rsplit('.', 1)[0])}-{date}"
 
-    # 文件夹名：优先供应商名称（便于分类），其次用物料编码，最后用标题
+    # 文件夹名：供应商名称（便于按供应商分类）
     folder = company or code or sanitize(title) or sanitize(orig_name.rsplit('.', 1)[0])
 
     return folder, fname
