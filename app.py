@@ -2,16 +2,16 @@ import os
 import re
 import uuid
 import shutil
+import requests
 from datetime import datetime
 from pathlib import Path
+from base64 import b64encode
+from urllib.parse import quote
 
 from flask import (
     Flask, request, render_template, send_file,
     jsonify, abort
 )
-from PIL import Image
-import pytesseract
-import fitz   # PyMuPDF
 
 # ──────────────────────────────────────────────
 # 配置
@@ -30,33 +30,82 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT
 
 
 # ──────────────────────────────────────────────
-# OCR & 命名
+# 百度 OCR 配置（从这里获取：https://cloud.baidu.com/product/ocr/general）
+# 环境变量：BAIDU_OCR_API_KEY  /  BAIDU_OCR_SECRET_KEY
 # ──────────────────────────────────────────────
+BAIDU_API_KEY    = os.getenv("BAIDU_OCR_API_KEY", "")
+BAIDU_SECRET_KEY = os.getenv("BAIDU_OCR_SECRET_KEY", "")
+
+
+def get_baidu_token() -> str:
+    """获取百度 OCR 的 access_token"""
+    if not BAIDU_API_KEY or not BAIDU_SECRET_KEY:
+        return ""
+    url = "https://aip.baidubce.com/oauth/2.0/token"
+    try:
+        r = requests.get(url, params={
+            "grant_type":    "client_credentials",
+            "client_id":     BAIDU_API_KEY,
+            "client_secret": BAIDU_SECRET_KEY,
+        }, timeout=10)
+        r.raise_for_status()
+        return r.json().get("access_token", "")
+    except Exception as e:
+        print(f"[百度OCR] 获取token失败: {e}")
+        return ""
+
+
+def ocr_with_baidu(image_path: Path) -> str:
+    """调用百度通用文字识别 API（高精度版）"""
+    if not BAIDU_API_KEY or not BAIDU_SECRET_KEY:
+        return "[百度OCR未配置，请在环境变量中设置 BAIDU_OCR_API_KEY 和 BAIDU_OCR_SECRET_KEY]"
+
+    token = get_baidu_token()
+    if not token:
+        return "[百度OCR获取token失败]"
+
+    with open(image_path, "rb") as f:
+        img_b64 = b64encode(f.read()).decode()
+
+    url = f"https://aip.baidubce.com/rest/2.0/ocr/v1/accurate_basic?access_token={token}"
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    data = f"image={quote(img_b64)}"
+
+    try:
+        r = requests.post(url, headers=headers, data=data, timeout=30)
+        r.raise_for_status()
+        result = r.json()
+        if "words_result" not in result:
+            return f"[百度OCR错误: {result.get('error_msg', '未知错误')}]"
+        text = "\n".join(item["words"] for item in result["words_result"])
+        return text.strip()
+    except Exception as e:
+        return f"[百度OCR调用失败: {e}]"
+
 
 def ocr_image(path: Path) -> str:
-    try:
-        img = Image.open(path)
-        return pytesseract.image_to_string(img, lang='chi_sim+eng').strip()
-    except Exception as e:
-        return f"[OCR 失败: {e}]"
+    return ocr_with_baidu(path)
 
 
 def ocr_pdf(path: Path) -> str:
+    """PDF 转图片后 OCR（使用百度 OCR API）"""
     try:
+        import fitz
         doc = fitz.open(str(path))
-        parts = [page.get_text("text").strip() for page in doc]
-        full = "\n".join(p for p in parts if p)
-        if len(full) > 30:
-            return full
-        # 原生文字太少 → OCR 第一页
-        pix = doc[0].get_pixmap(dpi=200)
-        tmp = path.parent / "_tmp_ocr.png"
-        pix.save(str(tmp))
-        result = ocr_image(tmp)
-        tmp.unlink(missing_ok=True)
-        return result
+        texts = []
+        for page in doc:
+            pix = page.get_pixmap(dpi=150)
+            tmp_img = path.parent / f"_tmp_ocr_{uuid.uuid4().hex}.png"
+            pix.save(str(tmp_img))
+            text = ocr_with_baidu(tmp_img)
+            tmp_img.unlink(missing_ok=True)
+            if text and not text.startswith("["):
+                texts.append(text)
+        return "\n".join(texts).strip() if texts else "[PDF无文字内容]"
+    except ImportError:
+        return "[PDF处理需要安装 PyMuPDF：pip install pymupdf]"
     except Exception as e:
-        return f"[PDF 解析失败: {e}]"
+        return f"[PDF解析失败: {e}]"
 
 
 def sanitize(name: str) -> str:
@@ -256,4 +305,4 @@ def files_json():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=int(os.getenv("PORT", 5000)), debug=False)

@@ -1,0 +1,12 @@
+{
+  "build": {
+    "packages": [
+      "tesseract-ocr",
+      "tesseract-ocr-chi-sim",
+      "poppler-utils"
+    ]
+  },
+  "env": {
+    "PYTHON_VERSION": "3.11"
+  }
+}
