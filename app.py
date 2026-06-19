@@ -117,10 +117,18 @@ def sanitize(name: str) -> str:
 def extract_info(text: str, orig_name: str) -> tuple[str, str]:
     """
     返回 (folder_name, file_name_no_ext)
+    命名规则：物料编码-日期（优先物料编码，其次供应商名称）
     """
     lines = [l.strip() for l in text.split('\n') if l.strip()]
 
-    # ── 公司/供应商名 ──
+    # ── 物料编码（优先） ──
+    codes = []
+    for line in lines:
+        # 匹配物料编码：字母+数字、纯数字、带连字符等
+        codes.extend(re.findall(r'\b([A-Za-z]{1,5}[\-_]?[0-9]{3,15})\b', line))
+        codes.extend(re.findall(r'\b([0-9]{6,20})\b', line))  # 纯数字编码（6-20位）
+
+    # ── 公司/供应商名（次优先，用于文件夹分类） ──
     company_re = re.compile(
         r'([\u4e00-\u9fa5]{2,10}'
         r'(?:公司|集团|企业|工厂|厂|科技|实业|商贸|包装|弹簧|模具|电子|机械|制造|有限|股份|责任|合伙企业)'
@@ -130,32 +138,36 @@ def extract_info(text: str, orig_name: str) -> tuple[str, str]:
     for line in lines[:20]:
         companies.extend(company_re.findall(line))
 
-    # ── 物料编码 ──
-    codes = []
-    for line in lines:
-        codes.extend(re.findall(r'\b([A-Za-z]{1,5}[\-_]?[0-9]{3,15})\b', line))
-
     # ── 日期 ──
     dates = []
     for line in lines:
         for m in re.finditer(r'(\d{4})[年\-/.](\d{1,2})[月\-/.](\d{1,2})', line):
             dates.append(f"{m.group(1)}{m.group(2).zfill(2)}{m.group(3).zfill(2)}")
 
-    # ── 标题行 ──
+    # ── 标题行（备用） ──
     title = ""
     for line in lines[:5]:
         if 4 <= len(line) <= 40:
             title = line
             break
 
-    company = sanitize(companies[0]) if companies else ""
-    code    = sanitize(codes[0])    if codes    else ""
-    date    = dates[0]              if dates     else datetime.now().strftime("%Y%m%d")
+    code     = sanitize(codes[0])     if codes    else ""
+    company  = sanitize(companies[0]) if companies else ""
+    date     = dates[0]                if dates     else datetime.now().strftime("%Y%m%d")
 
-    folder = company or sanitize(title) or sanitize(orig_name.rsplit('.', 1)[0])
-    fname  = (f"{code}-{date}" if code
-               else f"{sanitize(title)}-{date}" if title
-               else f"{sanitize(orig_name.rsplit('.', 1)[0])}-{date}")
+    # 文件名：优先物料编码，其次供应商+日期，最后原标题
+    if code:
+        fname = f"{code}-{date}"
+    elif company:
+        fname = f"{company}-{date}"
+    elif title:
+        fname = f"{sanitize(title)}-{date}"
+    else:
+        fname = f"{sanitize(orig_name.rsplit('.', 1)[0])}-{date}"
+
+    # 文件夹名：优先供应商名称（便于分类），其次用物料编码，最后用标题
+    folder = company or code or sanitize(title) or sanitize(orig_name.rsplit('.', 1)[0])
+
     return folder, fname
 
 

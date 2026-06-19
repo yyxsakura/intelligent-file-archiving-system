@@ -408,14 +408,21 @@ h2 svg { flex-shrink: 0; }
 
   /* ── Drop Zone ── */
   const dz = $('#dropZone');
-  dz.addEventListener('click', () => $('#fileInput').click());
+  dz.addEventListener('click', (e) => {
+    // 如果点击的是 label 或里面的元素，不触发 dropZone 的 click
+    if (e.target.closest('label')) return;
+    $('#fileInput').click();
+  });
   dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
   dz.addEventListener('dragleave', ()  => dz.classList.remove('drag-over'));
   dz.addEventListener('drop', e => {
     e.preventDefault(); dz.classList.remove('drag-over');
     addFiles(e.dataTransfer.files);
   });
-  $('#fileInput').addEventListener('change', e => addFiles(e.target.files));
+  $('#fileInput').addEventListener('change', e => {
+    addFiles(e.target.files);
+    e.target.value = '';  // 重置 input，允许重复选择同一文件
+  });
 
   function addFiles(fileList) {
     for (const f of fileList) {
