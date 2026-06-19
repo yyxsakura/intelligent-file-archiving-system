@@ -287,6 +287,13 @@ h2 svg { flex-shrink: 0; }
           </svg>
           刷新
         </button>
+        <button class="btn btn-primary btn-sm" onclick="downloadAll()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/>
+            <path d="M20.9 13A9 9 0 1 0 4 10"/>
+          </svg>
+          全部下载
+        </button>
         <button class="btn btn-danger btn-sm" onclick="confirmClearAll()">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
@@ -526,6 +533,11 @@ h2 svg { flex-shrink: 0; }
   });
 
   /* ── File operations ── */
+  window.downloadAll = () => {
+    toast('正在打包下载...');
+    window.location.href = '/download_all';
+  };
+
   window.deleteFile = (rel, btn) => {
     showModal('删除文件', `确定删除 "${rel.split('/').pop()}"？`, async () => {
       const r = await fetch('/delete_file', {

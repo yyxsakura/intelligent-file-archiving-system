@@ -2,6 +2,7 @@ import os
 import re
 import uuid
 import shutil
+import zipfile
 import requests
 from datetime import datetime
 from pathlib import Path
@@ -10,7 +11,7 @@ from urllib.parse import quote
 
 from flask import (
     Flask, request, render_template, send_file,
-    jsonify, abort
+    jsonify, abort, make_response
 )
 
 # ──────────────────────────────────────────────
@@ -85,6 +86,36 @@ def ocr_with_baidu(image_path: Path) -> str:
 
 def ocr_image(path: Path) -> str:
     return ocr_with_baidu(path)
+
+
+def image_to_pdf(image_path: Path, pdf_path: Path) -> bool:
+    """将图片转换为 PDF"""
+    try:
+        import fitz
+        img = fitz.open(str(image_path))
+        pdf = fitz.open()
+        for page in img:
+            pdf.new_page(width=page.rect.width, height=page.rect.height)
+            pdf[-1].insert_image(page.rect, filename=str(image_path))
+        pdf.save(str(pdf_path))
+        pdf.close()
+        img.close()
+        return True
+    except ImportError:
+        # 如果没有 fitz，用 PIL
+        try:
+            from PIL import Image
+            img = Image.open(str(image_path))
+            if img.mode == 'RGBA':
+                img = img.convert('RGB')
+            img.save(str(pdf_path), 'PDF')
+            return True
+        except Exception as e:
+            print(f"[图片转PDF] PIL失败: {e}")
+            return False
+    except Exception as e:
+        print(f"[图片转PDF] 失败: {e}")
+        return False
 
 
 def ocr_pdf(path: Path) -> str:
@@ -275,7 +306,24 @@ def upload():
             target = target_dir / f"{file_name}_{counter}{ext}"
             counter += 1
 
-        shutil.move(str(tmp), str(target))
+        # 如果是图片，转为 PDF
+        if ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp']:
+            pdf_name = f"{file_name}.pdf"
+            pdf_target = target_dir / pdf_name
+            # 重名处理（PDF）
+            counter2 = 1
+            while pdf_target.exists():
+                pdf_target = target_dir / f"{file_name}_{counter2}.pdf"
+                counter2 += 1
+            if image_to_pdf(tmp, pdf_target):
+                tmp.unlink(missing_ok=True)  # 删除原图
+                new_name = pdf_target.name
+                target = pdf_target
+                ext = '.pdf'
+            else:
+                shutil.move(str(tmp), str(target))
+        else:
+            shutil.move(str(tmp), str(target))
 
         results.append({
             "orig":        orig,
@@ -338,6 +386,31 @@ def clear_all():
         else:
             item.unlink()
     return jsonify(ok=True)
+
+
+@app.route('/download_all')
+def download_all():
+    """打包所有文件为 ZIP 下载"""
+    import tempfile
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.zip')
+    tmp.close()
+
+    with zipfile.ZipFile(tmp.name, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for folder in sorted(UPLOAD_DIR.iterdir()):
+            if not folder.is_dir():
+                continue
+            for f in sorted(folder.iterdir()):
+                if not f.is_file():
+                    continue
+                arcname = f"{folder.name}/{f.name}"
+                zf.write(str(f), arcname)
+
+    return send_file(
+        tmp.name,
+        as_attachment=True,
+        download_name=f"全部文件_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+        mimetype='application/zip'
+    )
 
 
 @app.route('/files_json')
