@@ -121,12 +121,30 @@ def extract_info(text: str, orig_name: str) -> tuple[str, str]:
     """
     lines = [l.strip() for l in text.split('\n') if l.strip()]
 
-    # ── 物料编码（优先） ──
+    # ── 物料编码（优先）- 支持多种格式 ──
     codes = []
+    # 格式1: 数字.数字.字母数字 (如 0.014.001A, 1.234.567B)
+    pattern1 = r'\b(\d{1,3}\.\d{2,5}\.\d{1,5}[A-Za-z]?)\b'
+    # 格式2: 字母+数字、带连字符 (如 MAT-001234, ABC12345)
+    pattern2 = r'\b([A-Za-z]{1,5}[\-_]?\d{3,15})\b'
+    # 格式3: 纯数字编码（6-20位，排除日期）
+    pattern3 = r'\b(\d{8,20})\b'
+
     for line in lines:
-        # 匹配物料编码：字母+数字、纯数字、带连字符等
-        codes.extend(re.findall(r'\b([A-Za-z]{1,5}[\-_]?[0-9]{3,15})\b', line))
-        codes.extend(re.findall(r'\b([0-9]{6,20})\b', line))  # 纯数字编码（6-20位）
+        codes.extend(re.findall(pattern1, line))
+        codes.extend(re.findall(pattern2, line))
+        codes.extend(re.findall(pattern3, line))
+
+    # 去重并过滤（排除看起来像日期的纯数字）
+    seen = set()
+    unique_codes = []
+    for c in codes:
+        if c not in seen:
+            # 过滤掉8-14位的纯数字（可能是日期或时间戳）
+            if re.match(r'^\d{8,14}$', c):
+                continue
+            seen.add(c)
+            unique_codes.append(c)
 
     # ── 公司/供应商名（次优先，用于文件夹分类） ──
     company_re = re.compile(
@@ -143,6 +161,11 @@ def extract_info(text: str, orig_name: str) -> tuple[str, str]:
     for line in lines:
         for m in re.finditer(r'(\d{4})[年\-/.](\d{1,2})[月\-/.](\d{1,2})', line):
             dates.append(f"{m.group(1)}{m.group(2).zfill(2)}{m.group(3).zfill(2)}")
+        # 也匹配 YYYYMMDD 格式
+        for m in re.finditer(r'\b(\d{8})\b', line):
+            d = m.group(1)
+            if d not in dates:
+                dates.append(d)
 
     # ── 标题行（备用） ──
     title = ""
@@ -151,9 +174,9 @@ def extract_info(text: str, orig_name: str) -> tuple[str, str]:
             title = line
             break
 
-    code     = sanitize(codes[0])     if codes    else ""
-    company  = sanitize(companies[0]) if companies else ""
-    date     = dates[0]                if dates     else datetime.now().strftime("%Y%m%d")
+    code     = sanitize(unique_codes[0])  if unique_codes else ""
+    company  = sanitize(companies[0])    if companies    else ""
+    date     = dates[0]                  if dates       else datetime.now().strftime("%Y%m%d")
 
     # 文件名：优先物料编码，其次供应商+日期，最后原标题
     if code:
