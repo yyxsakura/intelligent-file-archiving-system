@@ -315,12 +315,16 @@ def upload():
             while pdf_target.exists():
                 pdf_target = target_dir / f"{file_name}_{counter2}.pdf"
                 counter2 += 1
-            if image_to_pdf(tmp, pdf_target):
-                tmp.unlink(missing_ok=True)  # 删除原图
-                new_name = pdf_target.name
-                target = pdf_target
-                ext = '.pdf'
-            else:
+            try:
+                if image_to_pdf(tmp, pdf_target):
+                    tmp.unlink(missing_ok=True)  # 删除原图
+                    new_name = pdf_target.name
+                    target = pdf_target
+                    ext = '.pdf'
+                else:
+                    shutil.move(str(tmp), str(target))
+            except Exception as e:
+                print(f"[上传] 图片转PDF失败: {e}")
                 shutil.move(str(tmp), str(target))
         else:
             shutil.move(str(tmp), str(target))
