@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<title>智能文件归档系统</title>
+<style>
+/* ═══════════════════════════════════════════
+   CSS — 无框架纯手写，优先移动端体验
+   ═══════════════════════════════════════════ */
+
+:root {
+  --bg:        #f5f6fa;
+  --card:      #ffffff;
+  --primary:   #4f6ef7;
+  --primary-h: #3b5de7;
+  --danger:    #e74c3c;
+  --danger-h:  #c0392b;
+  --text:      #1a1a2e;
+  --text2:     #555;
+  --border:    #e0e0e0;
+  --radius:    10px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC",
+               "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ── Header ── */
+header {
+  background: linear-gradient(135deg, #4f6ef7, #6a5af9);
+  color: #fff;
+  padding: 0 1rem;
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 2px 12px rgba(0,0,0,.15);
+}
+.header-inner {
+  max-width: 960px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 54px;
+}
+.logo { display: flex; align-items: center; gap: .5rem; font-size: 1.1rem; font-weight: 700; }
+.logo svg { flex-shrink: 0; }
+
+/* ── Layout ── */
+main {
+  max-width: 960px; margin: 0 auto; padding: 1rem;
+}
+
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 6px rgba(0,0,0,.07);
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+h2 {
+  font-size: 1.05rem; font-weight: 700;
+  display: flex; align-items: center; gap: .45rem;
+  margin-bottom: 1rem;
+}
+h2 svg { flex-shrink: 0; }
+
+/* ── Drop Zone ── */
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 2rem 1rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  position: relative;
+}
+.drop-zone.drag-over {
+  border-color: var(--primary);
+  background: #f0f3ff;
+}
+.drop-icon { color: #bbb; margin-bottom: .5rem; }
+.drop-text { color: var(--text2); font-size: .95rem; }
+.pick-btn {
+  color: var(--primary); font-weight: 600; cursor: pointer; text-decoration: underline;
+}
+.drop-hint { color: #aaa; font-size: .78rem; margin-top: .4rem; }
+
+/* ── Queue ── */
+.queue { margin-top: 1rem; }
+.queue-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .5rem .75rem; border: 1px solid var(--border); border-radius: 8px;
+  margin-bottom: .5rem; font-size: .88rem;
+}
+.queue-item .qname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-item .qsize { color: #999; margin-left: .5rem; font-size: .78rem; }
+.queue-item .qremove {
+  background: none; border: none; color: var(--danger); cursor: pointer;
+  font-size: 1.1rem; margin-left: .5rem;
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .55rem 1.1rem; border: none; border-radius: 8px;
+  font-size: .9rem; font-weight: 600; cursor: pointer;
+  transition: background .15s;
+}
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-h); }
+.btn-primary:disabled { background: #aaa; cursor: not-allowed; }
+.btn-danger  { background: var(--danger); color: #fff; }
+.btn-danger:hover  { background: var(--danger-h); }
+.btn-ghost   { background: transparent; color: var(--text2); }
+.btn-ghost:hover { background: #f0f0f0; }
+.btn-sm      { padding: .35rem .7rem; font-size: .8rem; }
+.btn-icon    { background: none; border: none; cursor: pointer; color: #999; padding: .2rem; }
+.btn-icon:hover { color: var(--danger); }
+
+.upload-actions { display: flex; gap: .75rem; margin-top: 1rem; flex-wrap: wrap; }
+
+/* ── Progress ── */
+.progress-wrap { margin-top: .75rem; display: flex; align-items: center; gap: .75rem; }
+.progress-bar {
+  flex: 1; height: 8px; background: #eee; border-radius: 4px; overflow: hidden;
+}
+.progress-fill { height: 100%; width: 0; background: var(--primary); transition: width .3s; }
+#progressText { font-size: .82rem; color: var(--text2); white-space: nowrap; }
+
+/* ── Result list ── */
+.result-list { margin-top: 1rem; }
+.result-item {
+  padding: .6rem .75rem; border-radius: 8px; margin-bottom: .5rem;
+  font-size: .85rem; border-left: 4px solid;
+}
+.result-item.ok   { border-color: #27ae60; background: #f0faf4; }
+.result-item.err  { border-color: var(--danger); background: #fdf2f2; }
+.result-item .r-preview { color: #888; font-size: .78rem; margin-top: .2rem; }
+
+/* ── Library ── */
+.library-header {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem;
+}
+.library-actions { display: flex; gap: .5rem; }
+
+.folder-block { margin-bottom: 1rem; }
+.folder-title {
+  display: flex; align-items: center; gap: .4rem;
+  font-weight: 700; font-size: .95rem; padding: .5rem .25rem;
+  border-bottom: 2px solid var(--primary); color: var(--primary);
+}
+.folder-title svg { flex-shrink: 0; }
+.del-folder { margin-left: auto; }
+
+.file-list { list-style: none; padding: 0; }
+.file-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .6rem .5rem; border-bottom: 1px solid #f0f0f0;
+  gap: .5rem; flex-wrap: wrap;
+}
+.file-info { display: flex; align-items: center; gap: .5rem; flex: 1; min-width: 0; }
+.file-icon { font-size: 1.3rem; flex-shrink: 0; }
+.file-name { font-size: .9rem; word-break: break-all; }
+.file-meta { font-size: .75rem; color: #999; }
+.file-btns { display: flex; gap: .4rem; flex-shrink: 0; }
+
+.empty-state { text-align: center; padding: 3rem 1rem; color: #bbb; }
+
+/* ── Modal ── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.4);
+  display: flex; align-items: center; justify-content: center; z-index: 200;
+  padding: 1rem;
+}
+.modal {
+  background: #fff; border-radius: var(--radius); padding: 1.5rem;
+  max-width: 380px; width: 100%; box-shadow: 0 8px 30px rgba(0,0,0,.2);
+}
+.modal h3 { margin-bottom: .75rem; }
+.modal-actions { display: flex; gap: .75rem; margin-top: 1.25rem; justify-content: flex-end; }
+
+/* ── Mobile tweaks ── */
+@media (max-width: 600px) {
+  .header-inner { height: 48px; }
+  .logo { font-size: .95rem; }
+  main { padding: .6rem; }
+  .card { padding: 1rem; }
+  .file-item { flex-direction: column; align-items: flex-start; }
+  .file-btns { width: 100%; justify-content: flex-end; }
+  .upload-actions { flex-direction: column; }
+  .upload-actions .btn { width: 100%; justify-content: center; }
+  .library-header { flex-direction: column; align-items: flex-start; }
+}
+
+/* ── Toast ── */
+.toast {
+  position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+  background: #333; color: #fff; padding: .6rem 1.2rem; border-radius: 8px;
+  font-size: .85rem; z-index: 300; opacity: 0; transition: opacity .3s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="header-inner">
+    <div class="logo">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 3h6l2 3h10v13H3z"/>
+      </svg>
+      智能文件归档
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- 上传区 -->
+  <section class="card">
+    <h2>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+        <path d="M20.4 15.4A9 9 0 1 0 4 10"/>
+      </svg>
+      上传文件（OCR 自动识别命名）
+    </h2>
+
+    <div class="drop-zone" id="dropZone">
+      <div class="drop-icon">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+          <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+          <path d="M20.4 15.4A9 9 0 1 0 4 10"/>
+        </svg>
+      </div>
+      <p class="drop-text">拖拽文件到此处，或<label for="fileInput" class="pick-btn">选择文件</label></p>
+      <p class="drop-hint">支持 JPG / PNG / PDF / TIFF / WebP，单文件 ≤ 50MB</p>
+      <input type="file" id="fileInput" multiple
+             accept=".jpg,.jpeg,.png,.gif,.bmp,.tiff,.webp,.pdf" hidden>
+    </div>
+
+    <!-- 上传队列 -->
+    <div id="queue" class="queue" style="display:none"></div>
+
+    <div class="upload-actions">
+      <button id="uploadBtn" class="btn btn-primary" disabled>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+          <path d="M20.4 15.4A9 9 0 1 0 4 10"/>
+        </svg>
+        开始上传 &amp; 识别
+      </button>
+      <button class="btn btn-ghost" onclick="clearQueue()" id="clearQueueBtn" style="display:none">清空队列</button>
+    </div>
+
+    <!-- 进度 -->
+    <div id="progressWrap" class="progress-wrap" style="display:none">
+      <div class="progress-bar"><div id="progressBar" class="progress-fill"></div></div>
+      <span id="progressText">处理中…</span>
+    </div>
+
+    <!-- 结果 -->
+    <div id="resultList" class="result-list" style="display:none"></div>
+  </section>
+
+  <!-- 文件库 -->
+  <section class="card">
+    <div class="library-header">
+      <h2>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 3h6l2 3h10v13H3z"/>
+        </svg>
+        共享文件库
+      </h2>
+      <div class="library-actions">
+        <button class="btn btn-ghost btn-sm" onclick="refreshFiles()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.5 9A9 9 0 0 1 20.5 15M20.5 15A9 9 0 0 1 3.5 9"/>
+          </svg>
+          刷新
+        </button>
+        <button class="btn btn-danger btn-sm" onclick="confirmClearAll()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+            <path d="M10 11v6M14 11v6M9 6V4h6v2"/>
+          </svg>
+          清空全部
+        </button>
+      </div>
+    </div>
+
+    <div id="fileLibrary">
+      {% if files %}
+        {% set ns = namespace(cur='') %}
+        {% for f in files %}
+          {% if f.folder != ns.cur %}
+            {% if ns.cur != '' %}</ul></div>{% endif %}
+            {% set ns.cur = f.folder %}
+            <div class="folder-block">
+              <div class="folder-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 3h6l2 3h10v13H3z"/>
+                </svg>
+                {{ f.folder }}
+                <button class="btn-icon del-folder" onclick="deleteFolder('{{ f.folder }}')" title="删除文件夹">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                    <path d="M10 11v6M14 11v6M9 6V4h6v2"/>
+                  </svg>
+                </button>
+              </div>
+              <ul class="file-list">
+          {% endif %}
+          <li class="file-item">
+            <div class="file-info">
+              <span class="file-icon">{{ '📄' if f.filename.endswith('.pdf') else '🖼️' }}</span>
+              <div>
+                <div class="file-name">{{ f.filename }}</div>
+                <div class="file-meta">{{ f.size }} · {{ f.mtime }}</div>
+              </div>
+            </div>
+            <div class="file-btns">
+              <a class="btn btn-sm btn-primary" href="/download/{{ f.rel }}" download>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/>
+                  <path d="M20.9 13A9 9 0 1 0 4 10"/>
+                </svg>
+                下载
+              </a>
+              <button class="btn btn-sm btn-danger" onclick="deleteFile('{{ f.rel }}', this)">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                </svg>
+                删除
+              </button>
+            </div>
+          </li>
+        {% endfor %}
+        {% if files %}</ul></div>{% endif %}
+      {% else %}
+        <div class="empty-state">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.2">
+            <path d="M3 3h6l2 3h10v13H3z"/>
+          </svg>
+          <p style="margin-top:.5rem">暂无文件，上传后将显示在这里</p>
+        </div>
+      {% endif %}
+    </div>
+  </section>
+
+</main>
+
+<!-- Confirm Modal -->
+<div class="modal-overlay" id="modalOverlay" style="display:none">
+  <div class="modal">
+    <h3 id="modalTitle">确认操作</h3>
+    <p  id="modalBody"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+      <button class="btn btn-danger"  id="modalConfirm">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════
+   JS
+   ═══════════════════════════════════════════ */
+(() => {
+  const $ = s => document.querySelector(s);
+  const queue = [];          // { name, size, file }
+  let   pendingConfirm = null;
+
+  /* ── Toast ── */
+  function toast(msg) {
+    const el = $('#toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 2200);
+  }
+
+  /* ── Modal ── */
+  function showModal(title, body, onConfirm) {
+    $('#modalTitle').textContent = title;
+    $('#modalBody').textContent  = body;
+    pendingConfirm = onConfirm;
+    $('#modalOverlay').style.display = 'flex';
+  }
+  window.closeModal = () => {
+    $('#modalOverlay').style.display = 'none';
+    pendingConfirm = null;
+  };
+  $('#modalConfirm').addEventListener('click', () => {
+    if (pendingConfirm) pendingConfirm();
+    closeModal();
+  });
+
+  /* ── Drop Zone ── */
+  const dz = $('#dropZone');
+  dz.addEventListener('click', () => $('#fileInput').click());
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', ()  => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('drag-over');
+    addFiles(e.dataTransfer.files);
+  });
+  $('#fileInput').addEventListener('change', e => addFiles(e.target.files));
+
+  function addFiles(fileList) {
+    for (const f of fileList) {
+      if (f.size > 50 * 1024 * 1024) {
+        toast(`"${f.name}" 超过 50MB，已跳过`);
+        continue;
+      }
+      const ext = '.' + f.name.split('.').pop().toLowerCase();
+      if (!['.jpg','.jpeg','.png','.gif','.bmp','.tiff','.webp','.pdf'].includes(ext)) {
+        toast(`"${f.name}" 格式不支持`);
+        continue;
+      }
+      queue.push({ name: f.name, size: f.size, file: f });
+    }
+    renderQueue();
+  }
+
+  function renderQueue() {
+    const wrap = $('#queue');
+    if (!queue.length) { wrap.style.display = 'none'; $('#clearQueueBtn').style.display = 'none'; $('#uploadBtn').disabled = true; return; }
+    wrap.style.display = 'block';
+    $('#clearQueueBtn').style.display = 'inline-flex';
+    $('#uploadBtn').disabled = false;
+    wrap.innerHTML = queue.map((q, i) =>
+      `<div class="queue-item">
+         <span class="qname">${q.name}</span>
+         <span class="qsize">${(q.size/1024/1024).toFixed(1)} MB</span>
+         <button class="qremove" onclick="removeQueue(${i})">&times;</button>
+       </div>`
+    ).join('');
+  }
+
+  window.removeQueue = i => { queue.splice(i, 1); renderQueue(); };
+  window.clearQueue  = () => { queue.length = 0; renderQueue(); };
+
+  /* ── Upload ── */
+  $('#uploadBtn').addEventListener('click', async () => {
+    if (!queue.length) return;
+    const wrap  = $('#progressWrap');
+    const bar   = $('#progressBar');
+    const ptext = $('#progressText');
+    const rlist = $('#resultList');
+    wrap.style.display   = 'flex';
+    rlist.style.display  = 'none';
+    $('#uploadBtn').disabled = true;
+
+    const total = queue.length;
+    const results = [];
+
+    // 并发上传（最多 3 个同时）
+    let done = 0;
+    const CONC = 3;
+    async function uploadOne(q, idx) {
+      bar.style.width = `${(done / total) * 100}%`;
+      ptext.textContent = `处理 ${done + 1}/${total}：${q.name}`;
+      const fd = new FormData();
+      fd.append('files', q.file);
+      try {
+        const resp = await fetch('/upload', { method: 'POST', body: fd });
+        const data = await resp.json();
+        results.push(...data);
+      } catch {
+        results.push({ orig: q.name, status: 'error', msg: '上传失败' });
+      }
+      done++;
+      bar.style.width = `${(done / total) * 100}%`;
+    }
+
+    // 并发控制
+    const runners = [];
+    for (let i = 0; i < Math.min(CONC, queue.length); i++) {
+      runners.push((async () => {
+        while (queue.length) {
+          const q = queue.shift();
+          if (q) await uploadOne(q, i);
+        }
+      })());
+    }
+    await Promise.all(runners);
+
+    bar.style.width = '100%';
+    ptext.textContent = '完成！';
+    queue.length = 0;
+    renderQueue();
+    $('#uploadBtn').disabled = false;
+
+    // 显示结果
+    rlist.innerHTML = results.map(r =>
+      `<div class="result-item ${r.status==='ok'?'ok':'err'}">
+         <div><strong>${r.orig}</strong> → ${r.status==='ok'
+           ? `<span style="color:#27ae60">${r.folder}/${r.newname}</span>`
+           : `<span style="color:#e74c3c">${r.msg||'失败'}</span>`}
+         </div>
+         ${r.ocr_preview ? `<div class="r-preview">OCR 预览：${r.ocr_preview}</div>` : ''}
+       </div>`
+    ).join('');
+    rlist.style.display = 'block';
+
+    refreshFiles();
+    toast('上传完成！');
+  });
+
+  /* ── File operations ── */
+  window.deleteFile = (rel, btn) => {
+    showModal('删除文件', `确定删除 "${rel.split('/').pop()}"？`, async () => {
+      const r = await fetch('/delete_file', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({rel})
+      }).then(r=>r.json());
+      if (r.ok) { toast('已删除'); refreshFiles(); }
+      else toast('删除失败');
+    });
+  };
+
+  window.deleteFolder = (folder) => {
+    showModal('删除文件夹', `确定删除整个文件夹 "${folder}" 及其所有文件？`, async () => {
+      const r = await fetch('/delete_folder', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({folder})
+      }).then(r=>r.json());
+      if (r.ok) { toast('已删除'); refreshFiles(); }
+      else toast('删除失败');
+    });
+  };
+
+  window.confirmClearAll = () => {
+    showModal('清空全部', '确定删除所有文件和文件夹？此操作不可撤销。', async () => {
+      const r = await fetch('/clear_all', { method:'POST' }).then(r=>r.json());
+      if (r.ok) { toast('已全部清空'); refreshFiles(); }
+    });
+  };
+
+  window.refreshFiles = async () => {
+    const data = await fetch('/files_json').then(r=>r.json());
+    // 重新渲染文件库
+    const lib = $('#fileLibrary');
+    if (!data.length) {
+      lib.innerHTML = `<div class="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.2">
+          <path d="M3 3h6l2 3h10v13H3z"/>
+        </svg>
+        <p style="margin-top:.5rem">暂无文件，上传后将显示在这里</p>
+      </div>`;
+      return;
+    }
+
+    let html = '';
+    let cur = '';
+    data.forEach((f, i) => {
+      if (f.folder !== cur) {
+        if (cur) html += '</ul></div>';
+        cur = f.folder;
+        html += `<div class="folder-block">
+          <div class="folder-title">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 3h6l2 3h10v13H3z"/>
+            </svg>
+            ${escHtml(f.folder)}
+            <button class="btn-icon del-folder" onclick="deleteFolder('${escJs(f.folder)}')" title="删除文件夹">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                <path d="M10 11v6M14 11v6M9 6V4h6v2"/>
+              </svg>
+            </button>
+          </div>
+          <ul class="file-list">`;
+      }
+      const icon = f.filename.endsWith('.pdf') ? '📄' : '🖼️';
+      html += `<li class="file-item">
+        <div class="file-info">
+          <span class="file-icon">${icon}</span>
+          <div>
+            <div class="file-name">${escHtml(f.filename)}</div>
+            <div class="file-meta">${f.size} · ${f.mtime}</div>
+          </div>
+        </div>
+        <div class="file-btns">
+          <a class="btn btn-sm btn-primary" href="/download/${escAttr(f.rel)}" download>
+            下载
+          </a>
+          <button class="btn btn-sm btn-danger" onclick="deleteFile('${escJs(f.rel)}', this)">
+            删除
+          </button>
+        </div>
+      </li>`;
+    });
+    if (cur) html += '</ul></div>';
+    lib.innerHTML = html;
+  };
+
+  /* ── XSS helpers ── */
+  function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function escAttr(s){ return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
+  function escJs(s)   { return s.replace(/'/g,"\\'").replace(/\\/g,'\\\\'); }
+})();
+</script>
+</body>
+</html>
